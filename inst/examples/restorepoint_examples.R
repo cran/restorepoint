@@ -23,6 +23,16 @@ examples.env.console = function() {
   # Try typing the following into the new console
   list(...)
 } 
+# 
+# examples.break.point = function() {
+#   library(restorepoint)
+#   f = function(x=5) {
+#     breakpoint()
+#     x*2
+#     f(x*3)
+#   }
+#   f()
+# }
 
 # 
 # examples.clone.list = function() {
@@ -47,6 +57,7 @@ examples.restore.point = function () {
   
   # See the vignette for a detailed description
   library(restorepoint)
+  init.restore.point()
   set.restore.point.options(to.global = !FALSE)
   # A function that shall swap the left and right part of a vector
   swap.in.vector = function(vec,swap.ind) {
@@ -139,18 +150,22 @@ examples.restore.point = function () {
   ###############################################################
   
   env <- new.env()
+  parent.env(env)
   env$x = 1:3
   li <- list(env=env,test="test")
   li$env$x
   
   g = function(env,li) {
-    restore.point("g")
+    restore.point("g", deep.copy=TRUE)
+    as.list(env)
+    parent.env(env)
     env$x = c("A","B")
     li$env$x
   }
   g(env,li)
   # Environment has been changed
   env$x
+  
   
   # Check if environments are correctly restored
   restore.point("g")
@@ -176,11 +191,6 @@ examples.restore.point = function () {
 #   
 #   restore.point("g")
 #   dt # the original value has been restored
-  
-  
-  
-  
-  
 } 
 
 examples.eval.with.error.trace = function() {

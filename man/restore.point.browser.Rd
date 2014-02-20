@@ -1,22 +1,21 @@
-\name{restore.objects}
-\alias{restore.objects}
-\title{Restore stored objects by copying them into the specified environment. Is used by restore.point}
+\name{restore.point.browser}
+\alias{restore.point.browser}
+\title{Examing a restore point by invoking the browser}
 \usage{
-  restore.objects(name, dest = globalenv(),
-    was.forced = FALSE,
+  restore.point.browser(name, was.forced = FALSE,
+    message.text = paste("restore point", name, ", press ESC to return."),
     deep.copy = get.restore.point.options()$deep.copy)
 }
 \arguments{
   \item{name}{name under which the variables have been
   stored}
 
-  \item{dest}{environment into which the stored variables
-  shall be copied. By default the global environment.}
-
   \item{was.forced}{flag whether storage of objects was
   forced. If FALSE (default) a warning is shown if
   restore.objects is called and is.storing()==FALSE, since
   probably no objects have been stored.}
+
+  \item{message.text}{initial shown message}
 
   \item{deep.copy}{when storing or restoring tries to make
   a deep copy of R objects that are by default copied by
@@ -24,11 +23,9 @@
   can substantially speed up restore.point, however.}
 }
 \value{
-  returns nothing but automatically copies the stored
-  variables into the global environment
+  returns nothing
 }
 \description{
-  Restore stored objects by copying them into the specified
-  environment. Is used by restore.point
+  Examing a restore point by invoking the browser
 }
 

@@ -1,3 +1,5 @@
+# library(devtools);install(pkg = "C:/libraries/restorepoint/restorepoint", reload = TRUE, quick = FALSE,args = NULL, quiet = FALSE)
+
 # Debug with the R console by setting restore points.
 
 
@@ -6,7 +8,7 @@
 }
 
 init.restore.point = function() {
-  rpglob$options = list(storing=TRUE,to.global = TRUE,multi.line.parse.error = get.multi.line.parse.error())
+  rpglob$options = list(storing=TRUE,to.global = TRUE,multi.line.parse.error = get.multi.line.parse.error(), deep.copy=FALSE)
   rpglob$OBJECTS.LIST <- list()
 }
 rpglob <- new.env()
@@ -15,8 +17,9 @@ rpglob <- new.env()
 #' Set global options for restore points
 #' 
 #' @param options a list of options that shall be set. Possible options are listed below
-#' @param ... options can also directly be passed. The following options can be set
+#' @param ... options can also directly be passed. The following options can be set:
 #' - storing Default=TRUE enable or disable storing of options, setting storing = FALSE basicially turns off debugging via restore points
+#' - deep.copy Default = FALSE. If TRUE then when storing and restoring tries to make a deep copy of R objects that are by default copied by reference, like environments. deep.copy = FALSE substantially speeds up restore.point.
 #' - to.global Default=TRUE. If  TRUE then when options are restored, they are simply copied into the global environment and the R console is directly used for debugging. If FALSE a browser mode will be started instead. It is still possible to parse all R commands into the browser and to use copy and paste. To quit the browser press ESC in the R console. The advantage of the browser is that all objects are stored in a newly generated environment that mimics the environemnt of the original function, i.e. global varariables are not overwritten. Furthermore in the browser mode, one can pass the ... object to other functions, while this does not work in the global environment. The drawback is that the browser is still not as convenient as the normal R console, e.g. pressing arrow up does not restore the previous command. Also, one has to press Esc to leave the browser mode.
 #' @export 
 set.restore.point.options = function(options=NULL,...) {
@@ -74,15 +77,12 @@ is.storing <- function() {
 #' The function behaves different when called from a function or when called from the global environemnt. When called from a function, it makes a backup copy of all local objects and stores them internally under a key specified by name. When called from the global environment, it restores the previously stored objects by copying them into the global environment. See the package Vignette for an illustration of how this function can facilitate debugging.
 #'
 #' @param name key under which the objects are stored. For restore points at the beginning of a function, I would suggest the name of that function.
-#' @param deep.copy if TRUE (default) try to make deep copies of  objects that are by default copied by reference. Works so far for environments (recursivly). The function will search lists whether they contain reference objects, but for reasons of speed not yet in other containers. E.g. if an evironment is stored in a data.frame, only a shallow copy will be made. Setting deep.copy = FALSE may be useful if storing takes very long and variables that are copied by reference are not used or not modified.
+#' @param to.global if TRUE (default) objects are restored by simply copying them into the global environment. If FALSE a new environment will be created and the restore point browser will be invoked. 
+#' @param deep.copy if TRUE try to make deep copies of  objects that are by default copied by reference. Works so far for environments (recursivly). The function will search lists whether they contain reference objects, but for reasons of speed not yet in other containers. E.g. if an evironment is stored in a data.frame, only a shallow copy will be made. Setting deep.copy = FALSE (DEFAULT) may be useful if storing takes very long and variables that are copied by reference are not used or not modified.
 #' @param force store even if set.storing(FALSE) has been called
 #' @param dots by default a list of the ... argument of the function in whicht restore.point was called
-#' @param to.global if TRUE (default) objects are restored by simply copying them into the global environment. If FALSE a new environment will be created and the restore point browser will be invoked. 
 #' @export
-restore.point = function(name,deep.copy = TRUE, force=FALSE,
-  dots = eval(substitute(list(...), env = parent.frame())),
-  to.global = get.restore.point.options()$to.global
-) {
+restore.point = function(name,to.global = get.restore.point.options()$to.global,deep.copy = get.restore.point.options()$deep.copy, force=FALSE, dots = eval(substitute(list(...), env = parent.frame()))) {
 
   envir = sys.frame(-1);
   
@@ -91,9 +91,9 @@ restore.point = function(name,deep.copy = TRUE, force=FALSE,
   restore = identical(.GlobalEnv,envir)  
   if (restore) {
     if (!to.global) {
-      restore.point.browser(name,was.forced=force)
+      restore.point.browser(name,was.forced=force, deep.copy=deep.copy)
     } else {
-      restore.objects(name=name,was.forced=force)
+      restore.objects(name=name,was.forced=force,deep.copy=deep.copy)
     }
   } else {
     store.objects(name=name,parent.num=-2, deep.copy=deep.copy, force=force,dots=dots)
@@ -101,6 +101,16 @@ restore.point = function(name,deep.copy = TRUE, force=FALSE,
 }
 
 
+parent.env.to.store = function(penv) {
+  if(identical(penv,globalenv()) |
+     identical(penv,baseenv())   |
+     identical(penv,emptyenv())) {
+    return(FALSE)
+  }
+  if (nchar(environmentName(penv))>0)
+    return(FALSE)
+  return(TRUE)
+}
 
 #' Stores all local objects of the calling environment to be able to restore them later when debugging. Is used by restore.point 
 #' 
@@ -114,7 +124,7 @@ restore.point = function(name,deep.copy = TRUE, force=FALSE,
 #' @param dots by default a list of the ... argument of the function in whicht restore.point was called
 #' @return returns nothing, just called for side effects
 #' @export
-store.objects = function(name=NULL,parent.num=-1,deep.copy = TRUE, force=FALSE, store.if.called.from.global = FALSE, envir = sys.frame(parent.num),store.parent.env = "all.but.global", dots = eval(substitute(list(...), env = parent.frame()))
+store.objects = function(name=NULL,parent.num=-1,deep.copy = get.restore.point.options()$deep.copy, force=FALSE, store.if.called.from.global = FALSE, envir = sys.frame(parent.num),store.parent.env = "all.but.global", dots = eval(substitute(list(...), env = parent.frame()))
 ) {
    
   if (!(is.storing()) & !force) {
@@ -134,7 +144,7 @@ store.objects = function(name=NULL,parent.num=-1,deep.copy = TRUE, force=FALSE, 
   	name = fun.name
   }
   if (force) {
-    warning(paste("store.objects called by ", fun.name, " with force!"))
+    #warning(paste("store.objects called by ", fun.name, " with force!"))
   }
   if (deep.copy) {
     rpglob$copied.ref = NULL
@@ -150,9 +160,7 @@ store.objects = function(name=NULL,parent.num=-1,deep.copy = TRUE, force=FALSE, 
   if (store.parent.env == "all.but.global") {
     cenv = copied.env
     penv = parent.env(envir)
-    while (! (identical(penv,globalenv()) |
-              identical(penv,baseenv())   |
-              identical(penv,emptyenv())    )) {
+    while (parent.env.to.store(penv)) {
       copied.penv = copy.fun(penv)
       parent.env(cenv) <- copied.penv
       cenv = copied.penv
@@ -178,9 +186,10 @@ store.objects = function(name=NULL,parent.num=-1,deep.copy = TRUE, force=FALSE, 
 #' @param name name under which the variables have been stored
 #' @param dest environment into which the stored variables shall be copied. By default the global environment.
 #' @param was.forced flag whether storage of objects was forced. If FALSE (default) a warning is shown if restore.objects is called and is.storing()==FALSE, since probably no objects have been stored.
+#' @param deep.copy when storing or restoring tries to make a deep copy of R objects that are by default copied by reference, like environments. Setting deep.copy = FALSE can substantially speed up restore.point, however.
 #' @return returns nothing but automatically copies the stored variables into the global environment
 #' @export
-restore.objects = function(name, dest=globalenv(), was.forced=FALSE) {
+restore.objects = function(name, dest=globalenv(), was.forced=FALSE, deep.copy=get.restore.point.options()$deep.copy) {
   if ((!is.storing()) & (!was.forced)) 
     warning("is.storing() == FALSE\nPossible objects were not correctly stored. Call set.storing(TRUE) to enable storing.")
   
@@ -189,30 +198,48 @@ restore.objects = function(name, dest=globalenv(), was.forced=FALSE) {
   if (is.null(env)) {
     stop(paste0("No objects stored under name ", name))
   }
-  # Clone stored environment in order to guarantee that the restore point can be used several times even if reference objects are used
-  rpglob$copied.ref = NULL
-  cenv = clone.environment(env,use.copied.ref = TRUE)
-  # Copy the stored objects into the enviornment specified by dest (usually the global environment)
   
-  # Restore copies of parent enclosing environments
-  penv = parent.env(env)
-  penv.list = list()
-  count = 1
-  while (! (identical(penv,globalenv())|
-              identical(penv,baseenv())  |
-              identical(penv,emptyenv())  )) {
-    penv.list[[count]] = clone.environment(penv,use.copied.ref = TRUE)
-    penv = parent.env(penv)    
+  if (!deep.copy) {
+    # Reference objects will just be taken in their actual state
+    copy.into.env(source=env,dest=dest,from.restore.objects=TRUE)
+    restored = ls(envir=env)
+    # Copy all objects from stored parent environments into dest
+    penv = parent.env(env)
+    penv.list = list()
+    count = 1
+    while (parent.env.to.store(penv)) {
+      copy.into.env(source=penv,dest=dest,from.restore.objects=TRUE, exclude=restored)
+      restored = c(restored,ls(envir=penv))
+      penv = parent.env(penv)    
+    }
+    restored = unique(restored)
+
+  } else if (deep.copy) {
+    # Clone stored environment in order to guarantee that the restore point can be used several times even if reference objects are used
+    rpglob$copied.ref = NULL
+    cenv = clone.environment(env,use.copied.ref = TRUE)
+    # Copy the stored objects into the enviornment specified by dest (usually the global environment)
+    
+    # Restore copies of parent enclosing environments
+    penv = parent.env(env)
+    penv.list = list()
+    count = 1
+    while (! (identical(penv,globalenv())|
+                identical(penv,baseenv())  |
+                identical(penv,emptyenv())  )) {
+      penv.list[[count]] = clone.environment(penv,use.copied.ref = TRUE)
+      penv = parent.env(penv)    
+    }
+    restored = NULL
+    # Simply copy variables of none-global parent environments into dest
+    # The hierachy of enclosing environments is not replicated!!!
+    for (i in rev(seq_along(penv.list))) {
+      copy.into.env(source=penv.list[[i]],dest=dest,from.restore.objects=TRUE)
+      restored = c(restored,ls(envir=penv.list[[i]]))
+    }  
+    copy.into.env(source=cenv,dest=dest,from.restore.objects=TRUE)
+    restored = c(restored,ls(envir=cenv))
   }
-  restored = NULL
-  # Simply copy variables of none-global parent environments into dest
-  # The hierachy of enclosing environments is not replicated!!!
-  for (i in rev(seq_along(penv.list))) {
-    copy.into.env(source=penv.list[[i]],dest=dest)
-    restored = c(restored,ls(envir=penv.list[[i]]))
-  }  
-  copy.into.env(source=cenv,dest=dest)
-  restored = c(restored,ls(envir=cenv))
   message(paste("Restored: ", paste(restored,collapse=",")))
 }
 
@@ -222,17 +249,25 @@ clone.list = function(li, use.copied.ref = FALSE) {
   return(ret.li)
 }
 
+#' Deep copy of an environment
+#' @param env the environment to be cloned
+#' @param use.copied.ref internal 
+#' @export
 clone.environment = function(env, use.copied.ref = FALSE) {
   #print(as.list(env))
   #browser()
   li = eapply(env,copy.object,use.copied.ref = use.copied.ref)
-  return(as.environment(li))
+  cloned.env = as.environment(li)
+  # Set same enclosing environment as env
+  parent.env(cloned.env) <- parent.env(env)
+  cloned.env
 }
+
 
 copy.object = function(obj, use.copied.ref = FALSE) {
   #print("copy.object")
   #print(paste("missing: ",missing(obj), "class(obj) ", class(obj)))
-          
+  #browser()        
   # Dealing with missing values
   if (is.name(obj)) {
     return(obj)
@@ -269,7 +304,7 @@ copy.object = function(obj, use.copied.ref = FALSE) {
 #' Checks whether for the installed R version the function env.console is able to correctly parse R expressions that extend over more than a line
 #' 
 #'  The current implementation of env.console is quite dirty in so far that it parses an error message of the parse() function to check whether a given R expression is assumed to be continued in the next line. That process may not work in R distributions that have error messages that are not in English. The function can.parse.multi.line() tries to check whether that process works or not
-#'  @export TRUE
+#'  @export
 can.parse.multi.line = function() {
   is.multi.line("1+")
 }
@@ -303,19 +338,28 @@ is.multi.line = function(code, multi.line.parse.error = get.restore.point.option
   return(ret)  
 }
 
-# Examing a restore point by invoking the browser
-restore.point.browser = function(name,was.forced=FALSE) {
-  message(paste("restore point",name, ", press ESC to return."))
+#' Examing a restore point by invoking the browser
+#' 
+#' @param name name under which the variables have been stored
+#' @param was.forced flag whether storage of objects was forced. If FALSE (default) a warning is shown if restore.objects is called and is.storing()==FALSE, since probably no objects have been stored.
+#' @param message.text initial shown message
+#' @param deep.copy when storing or restoring tries to make a deep copy of R objects that are by default copied by reference, like environments. Setting deep.copy = FALSE can substantially speed up restore.point, however.
+#' @return returns nothing
+#' @export
+restore.point.browser = function(name,was.forced=FALSE, message.text=paste("restore point",name, ", press ESC to return."), deep.copy=get.restore.point.options()$deep.copy) {
+  if (!is.null(message.text))
+    message(message.text)
 
   # Generate environment in which the console shall be called
   enclos.env=.GlobalEnv # may store an enclosing environment instead
   env <- new.env(parent=enclos.env)
   # Populate environment with stored variables
-  restore.objects(name,dest=env,was.forced=was.forced)
+  restore.objects(name,dest=env,was.forced=was.forced, deep.copy=deep.copy)
   # Get ... from original function
   dots = get.stored.dots(name)
 
-  env.console(env=env,dots=dots, startup.message=NULL)
+  local.variables=as.list(env)
+  env.console(env=env,dots=dots, startup.message=NULL, local.variables=local.variables)
 }
 
 
@@ -327,17 +371,21 @@ restore.point.browser = function(name,was.forced=FALSE) {
 #' @param prompt The prompt that shall be shown in the emulated console. Default = ": "
 #' @param startup.message The text that is shown when env.console is started
 #' @param multi.line.parse.error A substring used to identify an error by parse that is due to parsing the beginning of a multi-line expression. The substring can depend on the language of R error messages. The packages tries to find a correct substring automatically as default.
+#' @param local.variables additional variables that shall be locally available 
 #' @return Returns nothing since the function must be stopped by pressing ESC.
 #' @export
-env.console = function(env = new.env(parent=parent.env), parent.env = parent.frame(), dots=NULL,prompt=": ", startup.message = "Press ESC to return to standard R console", multi.line.parse.error = get.restore.point.options()$multi.line.parse.error) {
+env.console = function(env = new.env(parent=parent.env), parent.env = parent.frame(), dots=NULL,prompt=": ", startup.message = "Press ESC to return to standard R console", multi.line.parse.error = get.restore.point.options()$multi.line.parse.error, local.variables = NULL) {
   
   
-  parse.fun <- function(...) {
+  parse.fun <- function(..., .LOCAL.VARIABLES = NULL) {
     .IS.ENV.CONSOLE.ENVIRONMENT__ <- TRUE
     
     .CONSOLE.INTERNAL$prev.code = ""
     .CONSOLE.INTERNAL$prompt = .CONSOLE.INTERNAL$normal.prompt
   
+    if (!is.null(.LOCAL.VARIABLES)) {
+      copy.into.env(source=.LOCAL.VARIABLES)
+    }
     #message("multi.line.parse.error:")
     #print(.CONSOLE.INTERNAL$multi.line.parse.error)
     while(TRUE) {
@@ -424,9 +472,10 @@ env.console = function(env = new.env(parent=parent.env), parent.env = parent.fra
   if (!is.null(startup.message))
     message(startup.message)
   if (!is.null(dots)) {
-    ret = do.call(parse.fun,dots)
+   # ret = do.call(parse.fun,dots)
+    ret = do.call(parse.fun,c(dots,list(.LOCAL.VARIABLES=local.variables))) 
   } else {
-    ret = parse.fun()
+    ret = parse.fun(.LOCAL.VARIABLES=local.variables)
   }
 
   # Call the expression that should be called in the global environment
@@ -435,6 +484,18 @@ env.console = function(env = new.env(parent=parent.env), parent.env = parent.fra
       message("Stop debugger because new file is sourced")
     }
     eval(ret$expr, envir=.GlobalEnv)
+  }
+}
+
+#' A default error string function for eval with error trace
+#' 
+#' @param e the error object
+#' @param tb a character vector of the traceback
+default.error.string.fun = function(e,tb) {
+  if (length(tb)>0) {
+    paste0(as.character(e),"\nCall sequence:\n", paste(tb,collapse = "\n"),"\n")
+  } else {
+    paste0(as.character(e),"\n")
   }
 }
 
@@ -451,15 +512,7 @@ env.console = function(env = new.env(parent=parent.env), parent.env = parent.fra
 #' @param error.string.fun a function(e,tb) that takes as arguments an error e and a string vector tb of the stack trace resulting from a call to calls.to.trace() and returns a string with the extended error message
 #' @return If no error occurs the value of expr, otherwise an error is thrown with an error message that contains the stack trace of the error.
 #' @export
-eval.with.error.trace = function(expr, max.lines=4, remove.early.calls =  0,
-    error.string.fun = function(e,tb) {
-      if (length(tb)>0) {
-        paste0(as.character(e),"\nCall sequence:\n", paste(tb,collapse = "\n"),"\n")
-      } else {
-        paste0(as.character(e),"\n")
-      }
-    }
-) {
+eval.with.error.trace = function(expr, max.lines=4, remove.early.calls =  0, error.string.fun = default.error.string.fun) {
   withRestarts(
     withCallingHandlers(
       eval(expr),
@@ -487,7 +540,7 @@ eval.with.error.trace = function(expr, max.lines=4, remove.early.calls =  0,
 #' @param max.lines as in traceback()
 #' @return a character vector with one element for each call formated in a similar fashion as traceback() does
 #' @export
-calls.to.trace = function(calls,max.lines=4) {
+calls.to.trace = function(calls=sys.calls(),max.lines=4) {
   x <- lapply(calls, deparse)
   n <- length(x)
   if (n == 0L) 
@@ -540,8 +593,10 @@ get.stored.dots = function(name) {
 #' @param dest the environment into which objects are copied
 #' @param names optionally a vector of names that shall be copied. If null all objects are copied
 #' @param exclude optionally a vector of names that shall not be copied
+#' @param from.restore.objects internal paramater keep FALSE
+#' @param overwrite should existing objects in dest with same name be overwritten?
 #' @export
-copy.into.env = function(source=sys.frame(sys.parent(1)),dest=sys.frame(sys.parent(1)),names = NULL, exclude=NULL) {
+copy.into.env = function(source=sys.frame(sys.parent(1)),dest=sys.frame(sys.parent(1)),names = NULL, exclude=NULL, from.restore.objects=FALSE, overwrite = TRUE) {
 
   if (is.null(names)) {
     if (is.environment(source)) {
@@ -550,11 +605,24 @@ copy.into.env = function(source=sys.frame(sys.parent(1)),dest=sys.frame(sys.pare
       names = names(source)
     }
   }
+  if (!overwrite) {
+    exclude = c(exclude, ls(envir=dest))
+  }
+  
   names = setdiff(names,exclude)
   
   if (is.environment(source)) {
     for (na in names) {
-      assign(na,get(na,envir=source), envir=dest)
+      if (!from.restore.objects) {
+        assign(na,get(na,envir=source), envir=dest)
+      } else {
+        tryCatch (
+          assign(na,get(na,envir=source), envir=dest),
+          error = function(e) {
+            message(paste("Variable ", na, " was missing."))
+          }
+        )
+      }
     }
   } else if (is.list(source)) {
     for (na in names) {
@@ -563,5 +631,21 @@ copy.into.env = function(source=sys.frame(sys.parent(1)),dest=sys.frame(sys.pare
   }
 }
 
-
-
+#' Checks whether cond holds true if not throws an error
+#' 
+#' Can be used for checking for errors in functions
+#' @param cond a condition that is checked
+#' @export
+assert = function(cond) {
+  if (!all(cond)) {
+    label=as.character(match.call()[2])
+    calls = sys.calls()
+    if (length(calls)>1) {
+      trace = paste0(" in " ,as.character(calls[[length(calls)-1]])[1])
+    } else {
+      trace = ""
+    }
+    #restore.point("assert")
+    stop(paste0("The assertion '",label,"' failed", trace,"."),call.=FALSE)
+  }
+}
