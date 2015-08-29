@@ -1,3 +1,34 @@
+examples.test.fun = function() {
+  library(restorepoint)
+  init.restore.point() 
+  
+  f = function(x=1) {
+    restore.point("f")
+    new.x = sample(1:4,1)
+    if (new.x>2) return(new.x)
+    f(x)
+  }
+ 
+#  add.restore.point.var.test({
+#    if (x<4) {
+#      cat("x == ",x)
+#    }
+#  }) 
+  
+  add.restore.point.test(x.test = function(env,...) {
+    if (exists("x",env)) {
+      x = env$x
+      if (x<4) {
+        cat("\nx == ",env$x,"\n")
+      }
+    }
+  })
+
+  set.restore.point.options(display.restore.point=TRUE)
+
+  f()  
+}
+
 examples.env.console = function() {
 
   # Generate an environment and start a console that can be used to evaluate 
@@ -53,12 +84,27 @@ examples.env.console = function() {
 # 
 
 
-examples.restore.point = function () {  
-  
-  # See the vignette for a detailed description
+examples.break.point = function () {  
   library(restorepoint)
-  init.restore.point()
-  set.restore.point.options(to.global = !FALSE)
+  set.restore.point.options(break.point.to.global = FALSE)
+  # A function that shall swap the left and right part of a vector
+  swap.in.vector = function(vec,swap.ind) {
+    break.point()
+    left  = vec[1:(swap.ind-1)]
+    right = vec[swap.ind:nrow(vec)]
+    c(right,left)
+  }
+  swap.in.vector(1:10,4)
+  
+}  
+  
+
+
+examples.restore.point.browser = function () {  
+  library(restorepoint)
+  
+  set.restore.point.options(to.global = FALSE)
+  
   # A function that shall swap the left and right part of a vector
   swap.in.vector = function(vec,swap.ind) {
     restore.point("swap.in.vector")
@@ -66,6 +112,33 @@ examples.restore.point = function () {
     right = vec[swap.ind:nrow(vec)]
     c(right,left)
   }
+  swap.in.vector(1:10,4)
+  
+  # You could call
+  restore.point.browser("swap.in.vector")
+  
+  # But there is no need to. Just running in the R Console (global environment) the command
+  restore.point("swap.in.vector")
+  # has the same effect (at least once you have set restore.point.options(to.global=FALSE))
+  
+  # Basically restore.point.browser() is rather an internal function
+}  
+  
+
+examples.restore.point = function () {  
+  
+  # See the vignette for a detailed description
+  library(restorepoint)
+  init.restore.point() 
+  set.restore.point.options(to.global = TRUE, display.restore.point=TRUE, trace.calls=TRUE)
+  # A function that shall swap the left and right part of a vector
+  swap.in.vector = function(vec,swap.ind) {
+    restore.point("swap.in.vector")
+    left  = vec[1:(swap.ind-1)]
+    right = vec[swap.ind:nrow(vec)]
+    c(right,left)
+  }
+  
   swap.in.vector(1:10,4)
   
   # Paste the body of the function
