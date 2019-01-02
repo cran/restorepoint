@@ -8,7 +8,7 @@ rpglob <- new.env()
 }
 
 init.restore.point = function() {
-  rpglob$options = list(storing=TRUE,to.global = TRUE,multi.line.parse.error = get.multi.line.parse.error(), deep.copy=FALSE, break.point.to.global=FALSE, display.restore.point=FALSE, trace.calls=TRUE)
+  rpglob$options = list(storing=TRUE,to.global = TRUE,multi.line.parse.error = get.multi.line.parse.error(), deep.copy=FALSE, break.point.to.global=FALSE, display.restore.point=FALSE, trace.calls=TRUE, disable=FALSE)
   rpglob$OBJECTS.LIST <- list()
   rpglob$CALLS.LIST <- list()
   rpglob$TESTS.LIST <- list()
@@ -34,14 +34,21 @@ add.restore.point.test = function(...) {
 
 #' Set global options for restore points
 #' 
+#' @param display.restore.point Makes sure that the display.restore.point option is set to FALSE by default
 #' @param options a list of options that shall be set. Possible options are listed below
 #' @param ... options can also directly be passed. The following options can be set:
 #' - storing Default=TRUE enable or disable storing of options, setting storing = FALSE basicially turns off debugging via restore points
 #' - deep.copy Default = FALSE. If TRUE then when storing and restoring tries to make a deep copy of R objects that are by default copied by reference, like environments. deep.copy = FALSE substantially speeds up restore.point.
 #' - to.global Default=TRUE. If  TRUE then when options are restored, they are simply copied into the global environment and the R console is directly used for debugging. If FALSE a browser mode will be started instead. It is still possible to parse all R commands into the browser and to use copy and paste. To quit the browser press ESC in the R console. The advantage of the browser is that all objects are stored in a newly generated environment that mimics the environemnt of the original function, i.e. global varariables are not overwritten. Furthermore in the browser mode, one can pass the ... object to other functions, while this does not work in the global environment. The drawback is that the browser is still not as convenient as the normal R console, e.g. pressing arrow up does not restore the previous command. Also, one has to press Esc to leave the browser mode.
 #' @export 
-restore.point.options = set.restore.point.options = function(options=NULL,...) {
-  options = c(options,list(...))
+restore.point.options = set.restore.point.options = function(options=NULL,display.restore.point=FALSE,...) {
+
+  if (!is.null(options$display.restore.point)) {
+    options = c(options,list(...))
+  } else {
+    options = c(options,list(display.restore.point=display.restore.point,...))
+
+  }
   unknown.options = setdiff(names(options),names(get.restore.point.options())) 
   if (length(unknown.options)>0) {
     warning(paste("unknown options", paste(unknown.options, collapse=","),"ignored"))
@@ -71,6 +78,16 @@ get.stored.object.list = function() {
   rpglob$OBJECTS.LIST
 }
 
+
+#' Globally disable or enable restore points
+#' 
+#' @param disable if TRUE globaly disable restore points. This speeds up calls to restore.point quickly. Is faster than set.storing(FALSE), but has no informative messages when restore.point is called from the global env.
+#' @export
+disable.restore.points <- function(disable=TRUE) {
+  set.restore.point.options(disable=disable)
+}
+
+
 #' Set whether objects shall be stored or not
 #' 
 #' @param storing if FALSE don't store objects if restore.point or store.objects is called. May save time. If TRUE (default) turn on storage again.
@@ -98,14 +115,16 @@ is.storing <- function() {
 #' @param to.global if TRUE (default) objects are restored by simply copying them into the global environment. If FALSE a new environment will be created and the restore point browser will be invoked. 
 #' @param deep.copy if TRUE try to make deep copies of  objects that are by default copied by reference. Works so far for environments (recursivly). The function will search lists whether they contain reference objects, but for reasons of speed not yet in other containers. E.g. if an evironment is stored in a data.frame, only a shallow copy will be made. Setting deep.copy = FALSE (DEFAULT) may be useful if storing takes very long and variables that are copied by reference are not used or not modified.
 #' @param force store even if set.storing(FALSE) has been called
-#' @param dots by default a list of the ... argument of the function in whicht restore.point was called
+#' @param dots by default a list of the ... argument of the function in which restore.point was called
 #' @param display.restore.point shall a text be shown in the console if restore.point is called. Can be useful when informative tracebacks are not readily availbale, e.g. when debugging shiny apps.
 #' @param indent.level when display.restore.point=TRUE shall level of nestedness be illustrated by identation
 #' @param trace.calls when objects are restored, shall a traceback be shown
 #' @param max.trace.lines if trace.calls=TRUE how many lines shall be shown at most in the traceback.
+#' @param options option list to fill the parameter defaults from
 #' @export
-restore.point = function(name,to.global = get.restore.point.options()$to.global,deep.copy = get.restore.point.options()$deep.copy, force=FALSE,display.restore.point = get.restore.point.options()$display.restore.point, indent.level = TRUE, trace.calls = get.restore.point.options()$trace.calls,max.trace.lines=10, dots = eval(substitute(list(...), env = parent.frame()))) {
-
+restore.point = function(name,to.global = options$to.global,deep.copy = options$deep.copy, force=FALSE,display.restore.point = options$display.restore.point, indent.level = TRUE, trace.calls = options$trace.calls,max.trace.lines=10, dots = eval(substitute(list(...), env = parent.frame())), options=get.restore.point.options()) {
+  if (isTRUE(options$disable)) return()
+  
   envir = sys.frame(-1)
   if (isTRUE(display.restore.point)) {
     if (!indent.level) {
@@ -463,7 +482,7 @@ restore.point.browser = function(name,was.forced=FALSE, message.text=paste("rest
 #' @param multi.line.parse.error A substring used to identify an error by parse that is due to parsing the beginning of a multi-line expression. The substring can depend on the language of R error messages. The packages tries to find a correct substring automatically as default.
 #' @param local.variables additional variables that shall be locally available 
 #' @return Returns nothing since the function must be stopped by pressing ESC.
-
+#' @importFrom utils capture.output
 #' @export
 env.console = function(env = new.env(parent=parent.env), parent.env = parent.frame(), dots=NULL,prompt=": ", startup.message = "Press ESC to return to standard R console", multi.line.parse.error = get.restore.point.options()$multi.line.parse.error, local.variables = NULL) {
   
